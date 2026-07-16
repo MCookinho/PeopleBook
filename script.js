@@ -1,7 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GitHubAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 const firebaseConfig = {
     apiKey: "AIzaSyBU8NQWncMLinjlLnAPdYGMAtXTBbYGgtE",
     authDomain: "peoplebook-796a3.firebaseapp.com",
@@ -11,10 +7,10 @@ const firebaseConfig = {
     appId: "1:1084822654112:web:ea84b34b469259d8090dc5"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GitHubAuthProvider();
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const provider = new firebase.auth.GithubAuthProvider();
 
 const API_URL = "https://peoplebook-lyart.vercel.app";
 
@@ -45,30 +41,29 @@ const elements = {
     rewriteTime: document.getElementById("rewrite-time")
 };
 
-elements.panelToggle.addEventListener("click", () => {
+elements.panelToggle.addEventListener("click", function() {
     elements.bottomPanel.classList.toggle("collapsed");
 });
 
-elements.btnLogin.addEventListener("click", async () => {
-    try {
-        await signInWithPopup(auth, provider);
-    } catch (error) {
+elements.btnLogin.addEventListener("click", function() {
+    auth.signInWithPopup(provider).catch(function(error) {
         console.error("Login failed:", error);
-    }
+        alert("Login failed: " + error.message);
+    });
 });
 
-elements.btnLogout.addEventListener("click", async () => {
-    await signOut(auth);
+elements.btnLogout.addEventListener("click", function() {
+    auth.signOut();
 });
 
-onAuthStateChanged(auth, async (user) => {
+auth.onAuthStateChanged(function(user) {
     currentUser = user;
     if (user) {
         elements.userSection.classList.add("hidden");
         elements.userInfo.classList.remove("hidden");
         elements.actionsSection.classList.remove("hidden");
         elements.usernameDisplay.textContent = user.displayName || user.email;
-        await loadUserData(user.uid);
+        loadUserData(user.uid);
     } else {
         elements.userSection.classList.remove("hidden");
         elements.userInfo.classList.add("hidden");
@@ -76,26 +71,25 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-async function loadUserData(uid) {
-    const userRef = doc(db, "users", uid);
-    const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists()) {
-        const data = userSnap.data();
-        if (data.cooldownEnd) {
-            userCooldownEnd = data.cooldownEnd.toDate();
-            startCooldownTimer();
+function loadUserData(uid) {
+    db.collection("users").doc(uid).get().then(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            if (data.cooldownEnd) {
+                userCooldownEnd = data.cooldownEnd.toDate();
+                startCooldownTimer();
+            }
+        } else {
+            db.collection("users").doc(uid).set({
+                githubUsername: currentUser.displayName,
+                lastSubmission: null,
+                cooldownEnd: null
+            });
         }
-    } else {
-        await setDoc(userRef, {
-            githubUsername: currentUser.displayName,
-            lastSubmission: null,
-            cooldownEnd: null
-        });
-    }
+    });
 }
 
-elements.btnAddContent.addEventListener("click", () => {
+elements.btnAddContent.addEventListener("click", function() {
     if (userCooldownEnd && new Date() < userCooldownEnd) {
         alert("You must wait before contributing again!");
         return;
@@ -106,70 +100,69 @@ elements.btnAddContent.addEventListener("click", () => {
     elements.btnSubmit.disabled = true;
 });
 
-elements.btnCloseModal.addEventListener("click", () => {
+elements.btnCloseModal.addEventListener("click", function() {
     elements.modalOverlay.classList.add("hidden");
 });
 
-elements.modalOverlay.addEventListener("click", (e) => {
+elements.modalOverlay.addEventListener("click", function(e) {
     if (e.target === elements.modalOverlay) {
         elements.modalOverlay.classList.add("hidden");
     }
 });
 
-elements.textInput.addEventListener("input", () => {
-    const len = elements.textInput.value.length;
+elements.textInput.addEventListener("input", function() {
+    var len = elements.textInput.value.length;
     elements.charCount.textContent = len;
     elements.btnSubmit.disabled = len === 0;
 });
 
-elements.btnSubmit.addEventListener("click", async () => {
-    const text = elements.textInput.value.trim();
+elements.btnSubmit.addEventListener("click", function() {
+    var text = elements.textInput.value.trim();
     if (!text || !currentUser) return;
 
     elements.btnSubmit.disabled = true;
     elements.btnSubmit.textContent = "Submitting...";
 
-    try {
-        const response = await fetch(`${API_URL}/api/submitContent`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                text: text,
-                userId: currentUser.uid,
-                username: currentUser.displayName || currentUser.email
-            })
-        });
-
+    fetch(API_URL + "/api/submitContent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            text: text,
+            userId: currentUser.uid,
+            username: currentUser.displayName || currentUser.email
+        })
+    }).then(function(response) {
         if (!response.ok) throw new Error("Failed to submit");
-
-        const cooldownEnd = new Date(Date.now() + 60 * 60 * 1000);
+        return response.json();
+    }).then(function() {
+        var cooldownEnd = new Date(Date.now() + 60 * 60 * 1000);
         userCooldownEnd = cooldownEnd;
 
-        await setDoc(doc(db, "users", currentUser.uid), {
-            lastSubmission: serverTimestamp(),
+        return db.collection("users").doc(currentUser.uid).set({
+            lastSubmission: firebase.firestore.FieldValue.serverTimestamp(),
             cooldownEnd: cooldownEnd
         }, { merge: true });
-
+    }).then(function() {
         startCooldownTimer();
         elements.modalOverlay.classList.add("hidden");
         alert("Your contribution has been added!");
-    } catch (error) {
+    }).catch(function(error) {
         console.error("Submit failed:", error);
         alert("Failed to submit. Please try again.");
-    } finally {
+    }).finally(function() {
         elements.btnSubmit.textContent = "Submit";
         elements.btnSubmit.disabled = false;
-    }
+    });
 });
 
 function startCooldownTimer() {
     if (cooldownInterval) clearInterval(cooldownInterval);
     elements.cooldownTimer.classList.remove("hidden");
 
-    cooldownInterval = setInterval(() => {
-        const now = new Date();
+    cooldownInterval = setInterval(function() {
+        var now = new Date();
         if (userCooldownEnd && now < userCooldownEnd) {
-            const diff = userCooldownEnd - now;
+            var diff = userCooldownEnd - now;
             elements.cooldownTime.textContent = formatDuration(diff);
         } else {
             elements.cooldownTimer.classList.add("hidden");
@@ -180,9 +173,9 @@ function startCooldownTimer() {
 }
 
 function startRewriteTimer(rewriteDate) {
-    const rewriteInterval = setInterval(() => {
-        const now = new Date();
-        const diff = rewriteDate - now;
+    var rewriteInterval = setInterval(function() {
+        var now = new Date();
+        var diff = rewriteDate - now;
         if (diff > 0) {
             elements.rewriteTime.textContent = formatDaysDuration(diff);
         } else {
@@ -193,54 +186,54 @@ function startRewriteTimer(rewriteDate) {
 }
 
 function formatDuration(ms) {
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    const s = Math.floor((ms % 60000) / 1000);
-    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    var h = Math.floor(ms / 3600000);
+    var m = Math.floor((ms % 3600000) / 60000);
+    var s = Math.floor((ms % 60000) / 1000);
+    return pad(h) + ":" + pad(m) + ":" + pad(s);
 }
 
 function formatDaysDuration(ms) {
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor((ms % 86400000) / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    return `${d}d ${h}h ${m}m`;
+    var d = Math.floor(ms / 86400000);
+    var h = Math.floor((ms % 86400000) / 3600000);
+    var m = Math.floor((ms % 3600000) / 60000);
+    return d + "d " + h + "h " + m + "m";
 }
 
 function pad(n) {
     return String(n).padStart(2, "0");
 }
 
-async function listenRewriteTimer() {
-    try {
-        const response = await fetch(`${API_URL}/api/getConfig`);
-        const data = await response.json();
+function listenRewriteTimer() {
+    fetch(API_URL + "/api/getConfig").then(function(response) {
+        return response.json();
+    }).then(function(data) {
         if (data.nextRewriteDate) {
             startRewriteTimer(new Date(data.nextRewriteDate));
         }
-    } catch (error) {
+    }).catch(function(error) {
         console.error("Failed to load config:", error);
-    }
+    });
 }
 
-async function loadBook() {
-    try {
-        const response = await fetch(`${API_URL}/api/getBook`);
+function loadBook() {
+    fetch(API_URL + "/api/getBook").then(function(response) {
         if (!response.ok) throw new Error("Book not found");
-        const data = await response.json();
+        return response.json();
+    }).then(function(data) {
         renderBook(data);
-    } catch (error) {
+    }).catch(function(error) {
         console.error("Failed to load book:", error);
         elements.bookText.innerHTML = '<p class="loading-text">The story has not begun yet. Be the first to contribute!</p>';
-    }
+    });
 }
 
 function renderBook(data) {
     elements.bookTitle.textContent = data.title || "The People's Book";
 
-    let html = "";
+    var html = "";
     if (data.chapters && data.chapters.length > 0) {
-        data.chapters.forEach(chapter => {
-            html += `<p>${escapeHtml(chapter)}</p>`;
+        data.chapters.forEach(function(chapter) {
+            html += "<p>" + escapeHtml(chapter) + "</p>";
         });
     } else {
         html = '<p class="loading-text">The story has not begun yet. Be the first to contribute!</p>';
@@ -249,22 +242,22 @@ function renderBook(data) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement("div");
+    var div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
 }
 
-elements.btnExportPdf.addEventListener("click", () => {
-    const element = document.getElementById("book-content");
-    const title = elements.bookTitle.textContent;
+elements.btnExportPdf.addEventListener("click", function() {
+    var element = document.getElementById("book-content");
+    var title = elements.bookTitle.textContent;
 
-    const opt = {
+    var opt = {
         margin: [15, 15, 15, 15],
-        filename: `${title.replace(/\s+/g, '_')}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
+        filename: title.replace(/\s+/g, "_") + ".pdf",
+        image: { type: "jpeg", quality: 0.98 },
         html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'] }
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
     };
 
     html2pdf().set(opt).from(element).save();
