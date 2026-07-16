@@ -69,14 +69,7 @@ body {
     text-indent: 0;
 }
 
-#book-text p:first-child::first-letter {
-    font-family: 'Cinzel', serif;
-    font-size: 3.5rem;
-    float: left;
-    line-height: 1;
-    padding-right: 10px;
-    color: #5a3825;
-}
+
 
 .loading-text {
     text-align: center;
