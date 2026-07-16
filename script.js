@@ -140,7 +140,7 @@ elements.btnSubmit.addEventListener("click", function() {
 
         return db.collection("users").doc(currentUser.uid).set({
             lastSubmission: firebase.firestore.FieldValue.serverTimestamp(),
-            cooldownEnd: cooldownEnd
+            cooldownEnd: firebase.firestore.Timestamp.fromDate(cooldownEnd)
         }, { merge: true });
     }).then(function() {
         startCooldownTimer();
