@@ -1,14 +1,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GitHubAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyBU8NQWncMLinjlLnAPdYGMAtXTBbYGgtE",
+    authDomain: "peoplebook-796a3.firebaseapp.com",
+    projectId: "peoplebook-796a3",
+    storageBucket: "peoplebook-796a3.firebasestorage.app",
+    messagingSenderId: "1084822654112",
+    appId: "1:1084822654112:web:ea84b34b469259d8090dc5"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -16,8 +16,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GitHubAuthProvider();
 
-const BOOK_REPO = "YOUR_GITHUB_USERNAME/PeopleBook";
-const BOOK_FILE = "livro.json";
+const API_URL = "https://peoplebook-lyart.vercel.app";
 
 let currentUser = null;
 let userCooldownEnd = null;
@@ -46,12 +45,10 @@ const elements = {
     rewriteTime: document.getElementById("rewrite-time")
 };
 
-// --- Panel Toggle ---
 elements.panelToggle.addEventListener("click", () => {
     elements.bottomPanel.classList.toggle("collapsed");
 });
 
-// --- Auth ---
 elements.btnLogin.addEventListener("click", async () => {
     try {
         await signInWithPopup(auth, provider);
@@ -98,7 +95,6 @@ async function loadUserData(uid) {
     }
 }
 
-// --- Modal ---
 elements.btnAddContent.addEventListener("click", () => {
     if (userCooldownEnd && new Date() < userCooldownEnd) {
         alert("You must wait before contributing again!");
@@ -126,7 +122,6 @@ elements.textInput.addEventListener("input", () => {
     elements.btnSubmit.disabled = len === 0;
 });
 
-// --- Submit Content ---
 elements.btnSubmit.addEventListener("click", async () => {
     const text = elements.textInput.value.trim();
     if (!text || !currentUser) return;
@@ -135,7 +130,7 @@ elements.btnSubmit.addEventListener("click", async () => {
     elements.btnSubmit.textContent = "Submitting...";
 
     try {
-        const response = await fetch("https://YOUR_CLOUD_FUNCTION_URL/submitContent", {
+        const response = await fetch(`${API_URL}/api/submitContent`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -167,7 +162,6 @@ elements.btnSubmit.addEventListener("click", async () => {
     }
 });
 
-// --- Timers ---
 function startCooldownTimer() {
     if (cooldownInterval) clearInterval(cooldownInterval);
     elements.cooldownTimer.classList.remove("hidden");
@@ -216,23 +210,21 @@ function pad(n) {
     return String(n).padStart(2, "0");
 }
 
-// --- Global Rewrite Timer ---
-function listenRewriteTimer() {
-    const configRef = doc(db, "config", "global");
-    onSnapshot(configRef, (snap) => {
-        if (snap.exists()) {
-            const data = snap.data();
-            if (data.nextRewriteDate) {
-                startRewriteTimer(data.nextRewriteDate.toDate());
-            }
+async function listenRewriteTimer() {
+    try {
+        const response = await fetch(`${API_URL}/api/getConfig`);
+        const data = await response.json();
+        if (data.nextRewriteDate) {
+            startRewriteTimer(new Date(data.nextRewriteDate));
         }
-    });
+    } catch (error) {
+        console.error("Failed to load config:", error);
+    }
 }
 
-// --- Load Book Content ---
 async function loadBook() {
     try {
-        const response = await fetch(`https://raw.githubusercontent.com/${BOOK_REPO}/main/${BOOK_FILE}`);
+        const response = await fetch(`${API_URL}/api/getBook`);
         if (!response.ok) throw new Error("Book not found");
         const data = await response.json();
         renderBook(data);
@@ -262,7 +254,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// --- Export PDF ---
 elements.btnExportPdf.addEventListener("click", () => {
     const element = document.getElementById("book-content");
     const title = elements.bookTitle.textContent;
@@ -279,7 +270,6 @@ elements.btnExportPdf.addEventListener("click", () => {
     html2pdf().set(opt).from(element).save();
 });
 
-// --- Init ---
 loadBook();
 listenRewriteTimer();
 elements.bottomPanel.classList.add("collapsed");
