@@ -17,18 +17,12 @@ export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
 
     const AUTH_HEADER = req.headers.authorization;
-    if (AUTH_HEADER !== `Bearer ${process.env.CRON_SECRET}`) {
+    const CRON_SECRET = process.env.CRON_SECRET;
+    const isCron = AUTH_HEADER === `Bearer ${CRON_SECRET}`;
+    const isManual = req.query.secret === CRON_SECRET;
+
+    if (!isCron && !isManual) {
         return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const configSnap = await db.doc("config/global").get();
-    const config = configSnap.exists ? configSnap.data() : null;
-
-    if (config && config.nextRewriteDate) {
-        const nextRewrite = new Date(config.nextRewriteDate);
-        if (new Date() < nextRewrite) {
-            return res.status(200).json({ message: "Not time yet", nextRewrite: config.nextRewriteDate });
-        }
     }
 
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -159,6 +153,6 @@ Each chapter should be a substantial paragraph (200-400 words). Return ONLY vali
         });
     } catch (error) {
         console.error("Rewrite error:", error);
-        return res.status(500).json({ error: "Rewrite failed" });
+        return res.status(500).json({ error: "Rewrite failed", details: error.message });
     }
 }
