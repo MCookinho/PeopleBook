@@ -21,6 +21,16 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "Unauthorized" });
     }
 
+    const configSnap = await db.doc("config/global").get();
+    const config = configSnap.exists ? configSnap.data() : null;
+
+    if (config && config.nextRewriteDate) {
+        const nextRewrite = new Date(config.nextRewriteDate);
+        if (new Date() < nextRewrite) {
+            return res.status(200).json({ message: "Not time yet", nextRewrite: config.nextRewriteDate });
+        }
+    }
+
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     const GITHUB_OWNER = process.env.GITHUB_OWNER;
     const GITHUB_REPO = process.env.GITHUB_REPO;
